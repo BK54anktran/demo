@@ -1,1 +1,30 @@
-rootProject.name = 'demo'
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "demo"
+include("app")
+
+include("kwik:core")
+include("kwik:cli")
+include("kwik:qlog")
+include("kwik:interop")
+include("kwik:samples")
+include("kwik:h09")
+
+
+rootProject.name = "kwik"
+
+include("core", "qlog", "interop", "cli", "samples", "h09")
+
+if (gradle.parent != null) {
+    project("kwik:core").name = "kwik-core"
+    project("kwik:qlog").name = "kwik-qlog"
+    project("kwik:interop").name = "kwik-interop"
+    project("kwik:cli").name = "kwik-cli"
+    project("kwik:samples").name = "kwik-samples"
+    project("kwik:h09").name = "kwik-h09"
+}

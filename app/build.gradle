@@ -1,0 +1,36 @@
+	plugins {
+		id 'java'
+		id 'org.springframework.boot' version '3.5.4'
+		id 'io.spring.dependency-management' version '1.1.7'
+	}
+
+	group = 'com.example'
+	version = '0.0.1-SNAPSHOT'
+	description = 'Demo project for Spring Boot'
+
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(17)
+		}
+	}
+
+	repositories {
+		mavenCentral()
+	}
+
+dependencies {
+    implementation project(":kwik:core")
+	// implementation project(":kwik:samples")
+	    // implementation project(":kwik:cli") // nếu cần
+    // implementation project(":kwik:h09") // nếu cần
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+	// ✅ Test dependencies
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+
+
+	tasks.named('test') {
+		useJUnitPlatform()
+	}
