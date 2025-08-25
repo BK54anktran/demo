@@ -87,12 +87,12 @@ public class DemoApplication {
                         @Override
                         public ApplicationProtocolConnection createConnection(String protocol,
                                         QuicConnection connection) {
-                                System.out.println("✅ New app protocol connection: " + protocol);
+                                System.out.println("New app protocol connection: " + protocol);
 
                                 return new ApplicationProtocolConnection() {
                                         @Override
                                         public void acceptPeerInitiatedStream(QuicStream stream) {
-                                                System.out.println("✅ acceptPeerInitiatedStream called!");
+                                                System.out.println("acceptPeerInitiatedStream called!");
                                                 new Thread(() -> {
                                                         try {
                                                                 // Read all bytes sent by client
