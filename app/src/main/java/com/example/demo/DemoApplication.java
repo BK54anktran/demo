@@ -65,6 +65,8 @@ public class DemoApplication {
                                 .maxIdleTimeoutInSeconds(30)
                                 .retryRequired(true)
                                 .connectionIdLength(8)
+                                .maxOpenPeerInitiatedBidirectionalStreams(100) // ✅ cấp cho client mở tối đa 100 stream
+                                .maxOpenPeerInitiatedUnidirectionalStreams(100) // tùy chọn
                                 .build();
 
                 ServerConnector serverConnector = ServerConnector.builder()
@@ -118,32 +120,30 @@ public class DemoApplication {
                         @Override
                         public ApplicationProtocolConnection createConnection(String protocol,
                                         QuicConnection connection) {
-                                // Đăng ký callback khi client mở stream
-                                connection.setPeerInitiatedStreamCallback(stream -> handleStream(stream));
-
+                                System.out.println("✅ New app protocol connection: " + protocol);
                                 return new ApplicationProtocolConnection() {
                                         @Override
                                         public void acceptPeerInitiatedStream(QuicStream stream) {
-                                                handleStream(stream);
+                                                System.out.println("✅ acceptPeerInitiatedStream called!");
+                                                new Thread(() -> {
+                                                        try {
+                                                                byte[] buf = stream.getInputStream().readAllBytes();
+                                                                String msg = new String(buf, StandardCharsets.UTF_8);
+                                                                System.out.println("Server received: " + msg);
+
+                                                                // Echo lại
+                                                                stream.getOutputStream().write(("Echo: " + msg)
+                                                                                .getBytes(StandardCharsets.UTF_8));
+                                                                stream.getOutputStream().flush();
+                                                                stream.getOutputStream().close(); // ✅ báo client là
+                                                                                                  // xong
+                                                        } catch (Exception e) {
+                                                                e.printStackTrace();
+                                                        }
+                                                }).start();
                                         }
+
                                 };
-                        }
-
-                        private void handleStream(QuicStream stream) {
-                                new Thread(() -> {
-                                        try {
-                                                byte[] buf = stream.getInputStream().readAllBytes();
-                                                String msg = new String(buf, StandardCharsets.UTF_8);
-                                                System.out.println("Server received: " + msg);
-
-                                                stream.getOutputStream().write(
-                                                                ("Echo: " + msg).getBytes(StandardCharsets.UTF_8));
-                                                stream.getOutputStream().flush();
-                                                stream.getOutputStream().close(); // ✅ báo client là hết data
-                                        } catch (Exception e) {
-                                                e.printStackTrace();
-                                        }
-                                }).start();
                         }
 
                         @Override
@@ -187,20 +187,15 @@ public class DemoApplication {
                 BufferedOutputStream out = new BufferedOutputStream(stream.getOutputStream());
                 out.write("Hello from QUIC client\n".getBytes(StandardCharsets.UTF_8));
                 out.flush();
-                out.close();
-                stream.getOutputStream().close(); // ✅ báo server biết đã hết data
+                stream.getOutputStream().close(); // ✅ quan trọng
+
+                // ❌ đừng close ngay, để server đọc trước
 
                 // Nhận
                 byte[] buf = stream.getInputStream().readAllBytes();
                 String reply = new String(buf, StandardCharsets.UTF_8);
                 System.out.println("Client got echo: " + reply);
-
-                // Ghi file
-                try (FileOutputStream fos = new FileOutputStream("client_output.txt")) {
-                        fos.write(buf);
-                }
-                System.out.println("Echo saved to " + new File("client_output.txt").getAbsolutePath());
-
                 client.close();
+
         }
 }
