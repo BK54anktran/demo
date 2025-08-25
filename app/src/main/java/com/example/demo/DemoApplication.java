@@ -3,7 +3,6 @@ package com.example.demo;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -38,6 +37,7 @@ public class DemoApplication {
 
                 System.out.println(args.length + " arguments provided: " + Arrays.toString(args));
 
+                // Setup logger
                 Logger log = new SysOutLogger();
                 log.timeFormat(Logger.TimeFormat.Long);
                 log.logWarning(true);
@@ -58,17 +58,22 @@ public class DemoApplication {
                         System.exit(1);
                 }
 
+                // QUIC version
                 List<QuicConnection.QuicVersion> supportedVersions = new ArrayList<>();
                 supportedVersions.add(QuicConnection.QuicVersion.V1);
 
+                // Server config
                 ServerConnectionConfig serverConfig = ServerConnectionConfig.builder()
                                 .maxIdleTimeoutInSeconds(30)
                                 .retryRequired(true)
                                 .connectionIdLength(8)
-                                .maxOpenPeerInitiatedBidirectionalStreams(100) // ✅ cấp cho client mở tối đa 100 stream
-                                .maxOpenPeerInitiatedUnidirectionalStreams(100) // tùy chọn
+                                .maxOpenPeerInitiatedBidirectionalStreams(100) // allow client up to 100 bidirectional
+                                                                               // streams
+                                .maxOpenPeerInitiatedUnidirectionalStreams(100) // allow client up to 100 unidirectional
+                                                                                // streams
                                 .build();
 
+                // Create server connector
                 ServerConnector serverConnector = ServerConnector.builder()
                                 .withPort(port)
                                 .withSupportedVersions(supportedVersions)
@@ -77,72 +82,37 @@ public class DemoApplication {
                                 .withLogger(log)
                                 .build();
 
-                // Application Protocol "echo"
-                // ApplicationProtocolConnectionFactory echoFactory = new
-                // ApplicationProtocolConnectionFactory() {
-                // @Override
-                // public ApplicationProtocolConnection createConnection(String protocol,
-                // QuicConnection connection) {
-                // return new ApplicationProtocolConnection() {
-                // @Override
-                // public void acceptPeerInitiatedStream(QuicStream stream) {
-                // new Thread(() -> {
-                // try {
-                // byte[] buf = stream.getInputStream().readAllBytes();
-                // String msg = new String(buf, StandardCharsets.UTF_8);
-                // System.out.println("Server received: " + msg);
-
-                // stream.getOutputStream().write(("Echo: " + msg)
-                // .getBytes(StandardCharsets.UTF_8));
-                // stream.getOutputStream().flush();
-                // stream.getOutputStream().close(); // đóng để client biết
-                // // đã hết dữ liệu
-                // } catch (Exception e) {
-                // e.printStackTrace();
-                // }
-                // }).start();
-                // }
-                // };
-                // }
-
-                // @Override
-                // public int maxConcurrentPeerInitiatedUnidirectionalStreams() {
-                // return 100;
-                // }
-
-                // @Override
-                // public int maxConcurrentPeerInitiatedBidirectionalStreams() {
-                // return 100;
-                // }
-                // };
-
+                // Register application protocol "echo"
                 serverConnector.registerApplicationProtocol("echo", new ApplicationProtocolConnectionFactory() {
                         @Override
                         public ApplicationProtocolConnection createConnection(String protocol,
                                         QuicConnection connection) {
                                 System.out.println("✅ New app protocol connection: " + protocol);
+
                                 return new ApplicationProtocolConnection() {
                                         @Override
                                         public void acceptPeerInitiatedStream(QuicStream stream) {
                                                 System.out.println("✅ acceptPeerInitiatedStream called!");
                                                 new Thread(() -> {
                                                         try {
+                                                                // Read all bytes sent by client
                                                                 byte[] buf = stream.getInputStream().readAllBytes();
                                                                 String msg = new String(buf, StandardCharsets.UTF_8);
                                                                 System.out.println("Server received: " + msg);
 
-                                                                // Echo lại
+                                                                // Echo back to client
                                                                 stream.getOutputStream().write(("Echo: " + msg)
                                                                                 .getBytes(StandardCharsets.UTF_8));
                                                                 stream.getOutputStream().flush();
-                                                                stream.getOutputStream().close(); // ✅ báo client là
-                                                                                                  // xong
+
+                                                                // Important: close output to signal client that
+                                                                // response is complete
+                                                                stream.getOutputStream().close();
                                                         } catch (Exception e) {
                                                                 e.printStackTrace();
                                                         }
                                                 }).start();
                                         }
-
                                 };
                         }
 
@@ -157,13 +127,13 @@ public class DemoApplication {
                         }
                 });
 
-                // chạy server ở thread riêng
+                // Run server in separate thread
                 new Thread(() -> {
                         serverConnector.start();
                         log.info("Kwik QUIC server " + KwikVersion.getVersion() + " started on port " + port);
                 }).start();
 
-                // đợi server lên
+                // Wait for server to start
                 Thread.sleep(1000);
 
                 // === CLIENT ===
@@ -171,7 +141,7 @@ public class DemoApplication {
                                 .uri(new URI("quic://localhost:" + port))
                                 .applicationProtocol("echo")
                                 .version(QuicConnection.QuicVersion.V1)
-                                .noServerCertificateCheck()
+                                .noServerCertificateCheck() // WARNING: disables TLS verification
                                 .build();
 
                 client.connect();
@@ -181,21 +151,23 @@ public class DemoApplication {
                         System.err.println("QUIC handshake failed!");
                 }
 
+                // Open new bidirectional stream
                 QuicStream stream = client.createStream(true);
 
-                // Gửi
+                // Send data
                 BufferedOutputStream out = new BufferedOutputStream(stream.getOutputStream());
                 out.write("Hello from QUIC client\n".getBytes(StandardCharsets.UTF_8));
                 out.flush();
-                stream.getOutputStream().close(); // ✅ quan trọng
 
-                // ❌ đừng close ngay, để server đọc trước
+                // Important: close output to notify server no more data is coming
+                stream.getOutputStream().close();
 
-                // Nhận
+                // Receive echo from server
                 byte[] buf = stream.getInputStream().readAllBytes();
                 String reply = new String(buf, StandardCharsets.UTF_8);
                 System.out.println("Client got echo: " + reply);
-                client.close();
 
+                // Close client connection
+                client.close();
         }
 }
